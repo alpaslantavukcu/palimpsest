@@ -7,11 +7,7 @@ import cv2
 import asyncio
 import numpy
 
-class Radar:
-    pass
 
-class Lidar:
-    pass
 
 class KeyboardControl:
     def __init__(self, vehicle):
