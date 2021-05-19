@@ -53,7 +53,7 @@ class JoystickControl:
         def __init__(self):
             # Konfigürasyon dosyasından mevcut joystick elemanına dair ayarlar okunuyor.
             parser = ConfigParser()
-            parser.read('wheel_config.ini')
+            parser.read(r'D:\Belgeler D\BÇ\palimpsest\palimpsest\sim\wheel_config.ini')
             self.steer_idx = int(parser.get('G29 Racing Wheel', 'steering_wheel'))
             self.throttle_idx = int(parser.get('G29 Racing Wheel', 'throttle'))
             self.brake_idx = int(parser.get('G29 Racing Wheel', 'brake'))
@@ -169,6 +169,29 @@ class GnssHelper:
 
         return x, y, altitude
 
+
+class ImuHelper:
+    def spawn(self, sim_world, blueprint, transform, attach):
+        self.blueprint = blueprint
+        self.transform = transform
+        self.Vx = 0
+        self.Yr = 0
+
+        with sim_world:
+            self.imu = sim_world.spawn(self, attach)
+            self.imu.listen(self.on_received_imu_data)
+        
+        self.snapshot = sim_world.snapshot.find(self.imu.id)
+    
+    def on_received_imu_data(self, imu_data):
+        #print(imu_data)
+        dt = 0.1
+        #self.Vx = self.Vx + imu_data.accelerometer.x * dt
+        self.Yr = imu_data.gyroscope.z
+        self.Vx = self.snapshot.get_velocity().x
+        print("Vx : {} , Yaw Rate : {}".format(imu_data.accelerometer.x, self.Yr))
+
+
 # Kamera aktörünü temsil eden sınıf
 # Kamera fps artırmak için ne yapılabilir? Gerçek zamanlı kamera uygulaması için ne gerekli.
 
@@ -279,7 +302,7 @@ class Simulator:
         self.ego_vehicle = EgoVehicle()
         self.rgb_cam = Camera()
         self.gnss = GnssHelper()
-
+        self.imu = ImuHelper()
     def setup(self):
         # Vehicle Spawn
         ego_blueprint = self.sim_world.blueprint_library.find('vehicle.mini.cooperst')
@@ -298,6 +321,9 @@ class Simulator:
         gnss_bp = self.sim_world.blueprint_library.find('sensor.other.gnss')
         self.gnss.spawn(self.sim_world, gnss_bp, carla.Transform(), attach=self.ego_vehicle.car)
 
+        # Imu Spawn
+        imu_bp = self.sim_world.blueprint_library.find('sensor.other.imu')
+        self.imu.spawn(self.sim_world, imu_bp, carla.Transform(), attach=self.ego_vehicle.car)
         
         with self.sim_world:
             self.sim_world.spectator.set_transform(self.rgb_cam.snapshot.get_transform())
@@ -308,13 +334,13 @@ class Simulator:
         kb_control = KeyboardControl(self.ego_vehicle)
         kb_control.listen()
         """
-        #js_control = JoystickControl()
+        js_control = JoystickControl()
         try : 
             while True:
                 with self.sim_world:
                     self.sim_world.spectator.set_transform(self.sim_world.snapshot.find(self.rgb_cam.cam.id).get_transform())
-                    #with self.ego_vehicle:
-                    #    js_control.get_control(self.ego_vehicle.controller)
+                    with self.ego_vehicle:
+                        js_control.get_control(self.ego_vehicle.controller)
         except RuntimeError:
             pass
         finally:
