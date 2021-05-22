@@ -5,7 +5,7 @@ import math
 import pygame
 import cv2
 import asyncio
-import numpy
+import numpy as np
 
 
 
@@ -135,8 +135,8 @@ class GnssHelper:
         self.snapshot = sim_world.snapshot.find(self.gnss.id)
     
     def on_received_gnss_data(self, gnss_data):
-        x, y, alt = self.from_gps(gnss_data.latitude, gnss_data.longitude, gnss_data.altitude)
-        print("{}, {}".format(x, y))
+        self.x, self.y, alt = self.from_gps(gnss_data.latitude, gnss_data.longitude, gnss_data.altitude)
+        #print("{}, {}".format(x, y))
     
     def from_gps(self, latitude: float, longitude: float, altitude: float):
         """Creates Location from GPS (latitude, longitude, altitude).
@@ -187,7 +187,7 @@ class ImuHelper:
         dt = 0.1
         self.Vx = self.Vx + imu_data.accelerometer.x * dt
         self.Yr = imu_data.gyroscope.z
-        print("Vx : {} , Yaw Rate : {}".format(self.Vx, self.Yr))
+        #print("Vx : {} , Yaw Rate : {}".format(self.Vx, self.Yr))
 
 
 # Kamera aktörünü temsil eden sınıf
@@ -211,14 +211,14 @@ class Camera:
         #asyncio.create_task(image.save_to_disk('output/%06d.png' % image.frame))
     
     def to_bgra_array(self, image):
-        """Convert a CARLA raw image to a BGRA numpy array."""
-        array = numpy.frombuffer(image.raw_data, dtype=numpy.dtype("uint8"))
-        array = numpy.reshape(array, (image.height, image.width, 4))
+        """Convert a CARLA raw image to a BGRA np array."""
+        array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+        array = np.reshape(array, (image.height, image.width, 4))
         return array
 
 
     def to_rgb_array(self, image):
-        """Convert a CARLA raw image to a RGB numpy array."""
+        """Convert a CARLA raw image to a RGB np array."""
         array = self.to_bgra_array(image)
         # Convert BGRA to RGB.
         array = array[:, :, :3]
@@ -289,7 +289,112 @@ class SimWorld:
         return self.world.spawn_actor(actor.blueprint, actor.transform, attach_to = attach)
         
 
+class EKF:
+    # varyans değerleri rastgele
+    def __init__(self):
+        self.Q = np.diag([0.1, 0.1, np.deg2rad(1.0), 1.0]) ** 2  # Önceki hata kovaryansı
+        self.R = np.diag([1.0, 1.0]) ** 2  # x ve y için kovaryans
+        self.DT = 0.1
+    
+    def set(self, x, y, vx, yr):
+        self.x = x
+        self.y = y
+        self.vx = vx
+        self.yr = yr
+        self.xEst = np.array([[x], [y], [vx], [yr]])
+        self.xTrue = np.zeros((4, 1))
+        self.PEst = np.eye(4)
 
+    def observation(self, xTrue, u):
+        xTrue = self.motion_model(xTrue, u)
+        z = self.observation_model(xTrue)
+
+        return xTrue, z
+
+
+    def motion_model(self, x, u):
+        F = np.array([[1.0, 0, 0, 0],
+                    [0, 1.0, 0, 0],
+                    [0, 0, 1.0, 0],
+                    [0, 0, 0, 0]])
+
+        B = np.array([[self.DT * math.cos(x[2, 0]), 0],
+                    [self.DT * math.sin(x[2, 0]), 0],
+                    [0.0, self.DT],
+                    [1.0, 0.0]])
+
+        x = F @ x + B @ u  # matris çarpımı
+
+        return x
+
+
+    def observation_model(self, x):
+        H = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0]
+        ])
+
+        z = H @ x
+
+        return z
+
+
+    def jacob_f(self, x, u):
+        yaw = x[3, 0]
+        v = u[0, 0]
+        jF = np.array([
+            [1.0, 0.0, -self.DT * v * math.sin(yaw), self.DT * math.cos(yaw)],
+            [0.0, 1.0, self.DT * v * math.cos(yaw), self.DT * math.sin(yaw)],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]])
+
+        return jF
+
+
+    def jacob_h(self):
+        jH = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0]
+        ])
+
+        return jH
+
+
+    def ekf_estimation(self, xEst, PEst, z, u):
+        #  Tahmin kısmı
+        xPred = self.motion_model(xEst, u)
+        jF = self.jacob_f(xEst, u)
+        PPred = jF @ PEst @ jF.T + self.Q
+
+        #  Sensörlere göre güncelleme
+        jH = self.jacob_h()
+        zPred = self.observation_model(xPred)
+        y = z - zPred
+        S = jH @ PPred @ jH.T + self.R
+        K = PPred @ jH.T @ np.linalg.inv(S) # kalman kazancı
+        xEst = xPred + K @ y
+        PEst = (np.eye(len(xEst)) - K @ jH) @ PPred # kalman çıktısı
+        return xEst, PEst
+
+
+    def run(self, x, y, vx, yr):
+
+        # history
+        hxEst = self.xEst
+        hxTrue = self.xTrue
+        hz = np.zeros((2, 1))
+
+        u = np.array([[vx], [yr]])
+        z = np.array([[x], [y]])
+        self.xTrue, _ = self.observation(self.xTrue, u)
+
+        self.xEst, self.PEst = self.ekf_estimation(self.xEst, self.PEst, z, u)
+
+        # doğru çalışıp çalışmadığına bakmak için
+        hxEst = np.hstack((hxEst, self.xEst))
+        hxTrue = np.hstack((hxTrue, self.xTrue))
+        hz = np.hstack((hz, z))
+        return hxEst, hxTrue
 
 class Simulator:
     def __init__(self, client = carla.Client('localhost', 2000)):
@@ -326,6 +431,10 @@ class Simulator:
         with self.sim_world:
             self.sim_world.spectator.set_transform(self.rgb_cam.snapshot.get_transform())
         
+        # EKF
+        self.ekf = EKF()
+        self.ekf.set(-584315, 4116700, 1, 0.1)
+        
     
     def loop(self):
         kb_control = KeyboardControl(self.ego_vehicle)
@@ -335,7 +444,16 @@ class Simulator:
                 with self.sim_world:
                     self.sim_world.spectator.set_transform(self.sim_world.snapshot.find(self.rgb_cam.cam.id).get_transform())
                     with self.ego_vehicle:
-                        print(self.ego_vehicle.car.get_velocity().x)
+                        Vx = self.ego_vehicle.car.get_velocity().x
+                        Yr = self.imu.Yr
+                        x = self.gnss.x
+                        y = self.gnss.y
+                        hxEst, hxTrue = self.ekf.run(x, y, Vx, Yr)
+                        print("-------------------------------------------------------")
+                        print(hxEst)
+                        print("Sensor Data : ")
+                        print("x : {}, y : {}, Vx : {}, Yr : {} ".format(x, y, Vx, Yr))
+                        print("-------------------------------------------------------")
         except RuntimeError:
             pass
         finally:
