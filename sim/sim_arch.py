@@ -34,13 +34,12 @@ class KeyboardControl:
             
             self.ego_vehicle.update()
 
-            print('alphanumeric key {0} pressed'.format(key.char))
+            #print('alphanumeric key {0} pressed'.format(key.char))
         except AttributeError:
             print('special key {0} pressed'.format(key))
 
     def on_release(self, key):
-        print('{0} released'.format(
-            key))
+        #print('{0} released'.format(key))
         if key == keyboard.Key.esc:
             # Stop listener
             return False
@@ -329,17 +328,14 @@ class Simulator:
         
     
     def loop(self):
-        """
         kb_control = KeyboardControl(self.ego_vehicle)
         kb_control.listen()
-        """
-        js_control = JoystickControl()
         try : 
             while True:
                 with self.sim_world:
                     self.sim_world.spectator.set_transform(self.sim_world.snapshot.find(self.rgb_cam.cam.id).get_transform())
                     with self.ego_vehicle:
-                        js_control.get_control(self.ego_vehicle.controller)
+                        print('')
         except RuntimeError:
             pass
         finally:
