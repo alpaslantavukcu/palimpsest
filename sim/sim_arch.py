@@ -335,7 +335,7 @@ class Simulator:
                 with self.sim_world:
                     self.sim_world.spectator.set_transform(self.sim_world.snapshot.find(self.rgb_cam.cam.id).get_transform())
                     with self.ego_vehicle:
-                        print('')
+                        print(self.ego_vehicle.car.get_velocity().x)
         except RuntimeError:
             pass
         finally:
