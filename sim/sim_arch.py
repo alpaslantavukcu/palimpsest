@@ -4,7 +4,6 @@ from configparser import ConfigParser
 import math
 import pygame
 import cv2
-import asyncio
 import numpy
 
 class Radar:
