@@ -457,7 +457,8 @@ class Simulator:
         except RuntimeError:
             pass
         finally:
-            self.rgb_cam.flush()
+            #self.rgb_cam.flush()
+            pass
 
 
 
