@@ -186,10 +186,10 @@ class ImuHelper:
     def on_received_imu_data(self, imu_data):
         #print(imu_data)
         dt = 0.1
-        #self.Vx = self.Vx + imu_data.accelerometer.x * dt
+        self.Vx = self.Vx + imu_data.accelerometer.x * dt
         self.Yr = imu_data.gyroscope.z
         self.Vx = self.snapshot.get_velocity().x
-        print("Vx : {} , Yaw Rate : {}".format(imu_data.accelerometer.x, self.Yr))
+        print("Vx : {} , Yaw Rate : {}".format(self.Vx, self.Yr))
 
 
 # Kamera aktörünü temsil eden sınıf
