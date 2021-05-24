@@ -6,9 +6,7 @@ import pygame
 import cv2
 import numpy as np
 import time
-import matplotlib.pyplot as plt
-import PIL
-from lane_detector import LaneDetector
+from .lane_detector import LaneDetector
 
 class KeyboardControl:
     def __init__(self, vehicle):
@@ -502,7 +500,7 @@ class Simulator:
                             pygame.display.flip()
                             self.clk.tick(30)
                             #pygame.time.delay(1500)
-                            
+
                         Vx = self.ego_vehicle.car.get_velocity().x
                         Yr = self.imu.Yr
                         x = self.gnss.x
