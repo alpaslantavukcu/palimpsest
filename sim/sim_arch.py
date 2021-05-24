@@ -4,7 +4,7 @@ from configparser import ConfigParser
 import math
 import pygame
 import cv2
-import numpy
+import numpy as np
 import time
 import matplotlib.pyplot as plt
 import PIL
@@ -50,7 +50,7 @@ class JoystickControl:
         def __init__(self):
             # Konfigürasyon dosyasından mevcut joystick elemanına dair ayarlar okunuyor.
             parser = ConfigParser()
-            parser.read('wheel_config.ini')
+            parser.read(r'D:\Belgeler D\BÇ\palimpsest\palimpsest\sim\wheel_config.ini')
             self.steer_idx = int(parser.get('G29 Racing Wheel', 'steering_wheel'))
             self.throttle_idx = int(parser.get('G29 Racing Wheel', 'throttle'))
             self.brake_idx = int(parser.get('G29 Racing Wheel', 'brake'))
@@ -121,6 +121,73 @@ class JoystickControl:
         return self.parse_vehicle_wheel(controller)
 
 
+class GnssHelper:
+    def spawn(self, sim_world, blueprint, transform, attach):
+        self.blueprint = blueprint
+        self.transform = transform
+
+        with sim_world:
+            self.gnss = sim_world.spawn(self, attach)
+            self.gnss.listen(self.on_received_gnss_data)
+        
+        self.snapshot = sim_world.snapshot.find(self.gnss.id)
+    
+    def on_received_gnss_data(self, gnss_data):
+        self.x, self.y, alt = self.from_gps(gnss_data.latitude, gnss_data.longitude, gnss_data.altitude)
+        #print("{}, {}".format(x, y))
+    
+    def from_gps(self, latitude: float, longitude: float, altitude: float):
+        """Creates Location from GPS (latitude, longitude, altitude).
+        This is the inverse of the _location_to_gps method found in
+        https://github.com/carla-simulator/scenario_runner/blob/master/srunner/tools/route_manipulation.py
+
+        https://github.com/erdos-project/pylot/blob/342c32eb598858ff23d7f24edec11414a3227885/pylot/utils.py
+        """
+        EARTH_RADIUS_EQUA = 6378137.0
+        # The following reference values are applicable for towns 1 through 7,
+        # and are taken from the corresponding OpenDrive map files.
+        # LAT_REF = 49.0
+        # LON_REF = 8.0
+        # TODO: Do not hardcode. Get the references from the open drive file.
+        LAT_REF = 49.0
+        LON_REF = 8.0
+
+        scale = math.cos(LAT_REF * math.pi / 180.0)
+        basex = scale * math.pi * EARTH_RADIUS_EQUA / 180.0 * LON_REF
+        basey = scale * EARTH_RADIUS_EQUA * math.log(
+            math.tan((90.0 + LAT_REF) * math.pi / 360.0))
+
+        x = scale * math.pi * EARTH_RADIUS_EQUA / 180.0 * longitude - basex
+        y = scale * EARTH_RADIUS_EQUA * math.log(
+            math.tan((90.0 + latitude) * math.pi / 360.0)) - basey
+
+        # This wasn't in the original method, but seems to be necessary.
+        y *= -1
+
+        return x, y, altitude
+
+
+class ImuHelper:
+    def spawn(self, sim_world, blueprint, transform, attach):
+        self.blueprint = blueprint
+        self.transform = transform
+        self.Vx = 0
+        self.Yr = 0
+
+        with sim_world:
+            self.imu = sim_world.spawn(self, attach)
+            self.imu.listen(self.on_received_imu_data)
+        
+        self.snapshot = sim_world.snapshot.find(self.imu.id)
+    
+    def on_received_imu_data(self, imu_data):
+        #print(imu_data)
+        dt = 0.1
+        self.Vx = self.Vx + imu_data.accelerometer.x * dt
+        self.Yr = imu_data.gyroscope.z
+        #print("Vx : {} , Yaw Rate : {}".format(self.Vx, self.Yr))
+
+
 # Kamera aktörünü temsil eden sınıf
 # Kamera fps artırmak için ne yapılabilir? Gerçek zamanlı kamera uygulaması için ne gerekli.
 
@@ -148,14 +215,14 @@ class Camera:
 
 
     def to_bgra_array(self, image):
-        """Convert a CARLA raw image to a BGRA numpy array."""
-        array = numpy.frombuffer(image.raw_data, dtype=numpy.dtype("uint8"))
-        array = numpy.reshape(array, (image.height, image.width, 4))
+        """Convert a CARLA raw image to a BGRA np array."""
+        array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+        array = np.reshape(array, (image.height, image.width, 4))
         return array
 
 
     def to_rgb_array(self, image):
-        """Convert a CARLA raw image to a RGB numpy array."""
+        """Convert a CARLA raw image to a RGB np array."""
         array = self.to_bgra_array(image)
         # Convert BGRA to RGB.
         array = array[:, :, :3]
@@ -245,6 +312,112 @@ class LaneDetectorHelper:
         return cpy
         #print(lines)
         
+class EKF:
+    # varyans değerleri rastgele
+    def __init__(self):
+        self.Q = np.diag([0.1, 0.1, np.deg2rad(1.0), 1.0]) ** 2  # Önceki hata kovaryansı
+        self.R = np.diag([1.0, 1.0]) ** 2  # x ve y için kovaryans
+        self.DT = 0.1
+    
+    def set(self, x, y, vx, yr):
+        self.x = x
+        self.y = y
+        self.vx = vx
+        self.yr = yr
+        self.xEst = np.array([[x], [y], [vx], [yr]])
+        self.xTrue = np.zeros((4, 1))
+        self.PEst = np.eye(4)
+
+    def observation(self, xTrue, u):
+        xTrue = self.motion_model(xTrue, u)
+        z = self.observation_model(xTrue)
+
+        return xTrue, z
+
+
+    def motion_model(self, x, u):
+        F = np.array([[1.0, 0, 0, 0],
+                    [0, 1.0, 0, 0],
+                    [0, 0, 1.0, 0],
+                    [0, 0, 0, 0]])
+
+        B = np.array([[self.DT * math.cos(x[2, 0]), 0],
+                    [self.DT * math.sin(x[2, 0]), 0],
+                    [0.0, self.DT],
+                    [1.0, 0.0]])
+
+        x = F @ x + B @ u  # matris çarpımı
+
+        return x
+
+
+    def observation_model(self, x):
+        H = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0]
+        ])
+
+        z = H @ x
+
+        return z
+
+
+    def jacob_f(self, x, u):
+        yaw = x[3, 0]
+        v = u[0, 0]
+        jF = np.array([
+            [1.0, 0.0, -self.DT * v * math.sin(yaw), self.DT * math.cos(yaw)],
+            [0.0, 1.0, self.DT * v * math.cos(yaw), self.DT * math.sin(yaw)],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]])
+
+        return jF
+
+
+    def jacob_h(self):
+        jH = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0]
+        ])
+
+        return jH
+
+
+    def ekf_estimation(self, xEst, PEst, z, u):
+        #  Tahmin kısmı
+        xPred = self.motion_model(xEst, u)
+        jF = self.jacob_f(xEst, u)
+        PPred = jF @ PEst @ jF.T + self.Q
+
+        #  Sensörlere göre güncelleme
+        jH = self.jacob_h()
+        zPred = self.observation_model(xPred)
+        y = z - zPred
+        S = jH @ PPred @ jH.T + self.R
+        K = PPred @ jH.T @ np.linalg.inv(S) # kalman kazancı
+        xEst = xPred + K @ y
+        PEst = (np.eye(len(xEst)) - K @ jH) @ PPred # kalman çıktısı
+        return xEst, PEst
+
+
+    def run(self, x, y, vx, yr):
+
+        # history
+        hxEst = self.xEst
+        hxTrue = self.xTrue
+        hz = np.zeros((2, 1))
+
+        u = np.array([[vx], [yr]])
+        z = np.array([[x], [y]])
+        self.xTrue, _ = self.observation(self.xTrue, u)
+
+        self.xEst, self.PEst = self.ekf_estimation(self.xEst, self.PEst, z, u)
+
+        # doğru çalışıp çalışmadığına bakmak için
+        hxEst = np.hstack((hxEst, self.xEst))
+        hxTrue = np.hstack((hxTrue, self.xTrue))
+        hz = np.hstack((hz, z))
+        return hxEst, hxTrue
 
 class Simulator:
     def __init__(self, client = carla.Client('localhost', 2000)):
@@ -254,6 +427,8 @@ class Simulator:
         # Vehicle Init
         self.ego_vehicle = EgoVehicle()
         self.rgb_cam = Camera()
+        self.gnss = GnssHelper()
+        self.imu = ImuHelper()
     
     def pygame_setup(self):
         pygame.init()
@@ -263,6 +438,7 @@ class Simulator:
         self.screen = pygame.display.set_mode(size)
         self.clk = pygame.time.Clock()
 
+        
     def setup(self):
         # Vehicle Spawn
         ego_blueprint = self.sim_world.blueprint_library.find('vehicle.mini.cooperst')
@@ -281,16 +457,25 @@ class Simulator:
 
         # Lane Detector
         self.ldetector = LaneDetectorHelper()
+        # Gnss Spawn
+        gnss_bp = self.sim_world.blueprint_library.find('sensor.other.gnss')
+        self.gnss.spawn(self.sim_world, gnss_bp, carla.Transform(), attach=self.ego_vehicle.car)
+
+        # Imu Spawn
+        imu_bp = self.sim_world.blueprint_library.find('sensor.other.imu')
+        self.imu.spawn(self.sim_world, imu_bp, carla.Transform(), attach=self.ego_vehicle.car)
         
         with self.sim_world:
             self.sim_world.spectator.set_transform(self.rgb_cam.snapshot.get_transform())
         
+        # EKF
+        self.ekf = EKF()
+        self.ekf.set(-584315, 4116700, 1, 0.1)
+        
     
     def loop(self):
-        """
         kb_control = KeyboardControl(self.ego_vehicle)
         kb_control.listen()
-        """
         #js_control = JoystickControl()
         try : 
             while True:
@@ -317,10 +502,22 @@ class Simulator:
                             pygame.display.flip()
                             self.clk.tick(30)
                             #pygame.time.delay(1500)
+                            
+                        Vx = self.ego_vehicle.car.get_velocity().x
+                        Yr = self.imu.Yr
+                        x = self.gnss.x
+                        y = self.gnss.y
+                        hxEst, hxTrue = self.ekf.run(x, y, Vx, Yr)
+                        print("-------------------------------------------------------")
+                        print(hxEst)
+                        print("Sensor Data : ")
+                        print("x : {}, y : {}, Vx : {}, Yr : {} ".format(x, y, Vx, Yr))
+                        print("-------------------------------------------------------")
         except RuntimeError:
             pass
         finally:
-            self.rgb_cam.flush()
+            #self.rgb_cam.flush()
+            pass
 
 
 
