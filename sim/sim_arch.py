@@ -6,12 +6,6 @@ import pygame
 import cv2
 import numpy
 
-class Radar:
-    pass
-
-class Lidar:
-    pass
-
 class KeyboardControl:
     def __init__(self, vehicle):
         self.ego_vehicle = vehicle
