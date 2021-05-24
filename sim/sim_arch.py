@@ -30,14 +30,10 @@ class KeyboardControl:
                 self.ego_vehicle.controller.brake = 0
             
             self.ego_vehicle.update()
-
-            print('alphanumeric key {0} pressed'.format(key.char))
         except AttributeError:
             print('special key {0} pressed'.format(key))
 
     def on_release(self, key):
-        print('{0} released'.format(
-            key))
         if key == keyboard.Key.esc:
             # Stop listener
             return False
