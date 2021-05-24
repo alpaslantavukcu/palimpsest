@@ -6,7 +6,8 @@ import pygame
 import cv2
 import numpy as np
 import time
-from .lane_detector import LaneDetector
+import random
+from lane_detector import LaneDetector
 
 class KeyboardControl:
     def __init__(self, vehicle):
@@ -242,74 +243,6 @@ class Camera:
             video.release()
             
 
-
-
-
-class EgoVehicle:
-    def __init__(self, controller = carla.VehicleControl()):
-        self.controller = controller
-        
-    
-    def spawn(self, sim_world, blueprint, transform):
-        self.blueprint = blueprint
-        self.transform = transform
-
-        with sim_world:
-            self.car = sim_world.spawn(self)
-        self.snapshot = sim_world.snapshot.find(self.car.id)
-    
-    def __enter__(self):
-        pass
-    
-    # bu sentaks update işleminin sürekli manuel çağrılmaması ve alternatif senaryolar için düşünüldü
-    # bununla beraber enter fonkiyonunun olmaması gerekliliğini sorgulatmakta
-    def __exit__(self, type, value, traceback):
-        self.update()
-
-    def update(self):
-        self.car.apply_control(self.controller)
-
-
-
-class SimWorld:
-    def __init__(self, client):
-        self.world = client.get_world()
-        self.blueprint_library = self.world.get_blueprint_library()
-        self.snapshot = self.world.get_snapshot()
-        self.spectator = self.world.get_spectator()
-        self.set_setting()
-    
-    def set_setting(self, sync_mode = True, fixed_delta = 0.1):
-        with self:
-            self.settings = self.world.get_settings()
-            self.settings.synchronous_mode = sync_mode
-            self.settings.fixed_delta_seconds = fixed_delta
-            self.world.apply_settings(self.settings)
-
-    
-    def __enter__(self): pass
-    
-    def __exit__(self, type, value, traceback):
-        self.world.tick()
-        self.snapshot = self.world.get_snapshot()
-
-    def spawn(self, actor, attach = None):
-        return self.world.spawn_actor(actor.blueprint, actor.transform, attach_to = attach)
-        
-
-class LaneDetectorHelper:
-    def __init__(self):
-        self.detector = LaneDetector()
-    
-    def detect(self, img):
-        cpy = img.copy()
-        left_poly, right_poly, left, right = self.detector(img)
-        lines = left + right
-        cpy[lines >= 0.5] = 255
-        
-        return cpy
-        #print(lines)
-        
 class EKF:
     # varyans değerleri rastgele
     def __init__(self):
@@ -417,8 +350,133 @@ class EKF:
         hz = np.hstack((hz, z))
         return hxEst, hxTrue
 
+
+
+class EgoVehicle:
+    def __init__(self, controller = carla.VehicleControl()):
+        self.controller = controller
+        
+    
+    def spawn(self, sim_world, blueprint, transform):
+        self.blueprint = blueprint
+        self.transform = transform
+
+        with sim_world:
+            self.car = sim_world.spawn(self)
+        self.snapshot = sim_world.snapshot.find(self.car.id)
+    
+    def __enter__(self):
+        pass
+    
+    # bu sentaks update işleminin sürekli manuel çağrılmaması ve alternatif senaryolar için düşünüldü
+    # bununla beraber enter fonkiyonunun olmaması gerekliliğini sorgulatmakta
+    def __exit__(self, type, value, traceback):
+        self.update()
+
+    def update(self):
+        self.car.apply_control(self.controller)
+
+
+
+class SimWorld:
+    def __init__(self, client, spawn_actors = False):
+        self.world = client.get_world()
+        self.blueprint_library = self.world.get_blueprint_library()
+        self.snapshot = self.world.get_snapshot()
+        self.spectator = self.world.get_spectator()
+        self.set_setting()
+    
+    def set_setting(self, sync_mode = True, fixed_delta = 0.1):
+        with self:
+            self.settings = self.world.get_settings()
+            self.settings.synchronous_mode = sync_mode
+            self.settings.fixed_delta_seconds = fixed_delta
+            self.world.apply_settings(self.settings)
+
+    
+    def __enter__(self): pass
+    
+    def __exit__(self, type, value, traceback):
+        self.world.tick()
+        self.snapshot = self.world.get_snapshot()
+
+    def spawn(self, actor, attach = None):
+        return self.world.spawn_actor(actor.blueprint, actor.transform, attach_to = attach)
+        
+
+class LaneDetectorHelper:
+    def __init__(self):
+        self.detector = LaneDetector()
+    
+    def detect(self, img):
+        cpy = img.copy()
+        left_poly, right_poly, left, right = self.detector(img)
+        lines = left + right
+        cpy[lines >= 0.5] = 255
+        
+        return cpy
+        #print(lines)
+
+class ObjectDetector:
+    def __init__(self):
+        self.net = cv2.dnn.readNet('D:\\yolov4.weights', 'D:\\yolov4.cfg')
+        self.classes = []
+        with open('D:\\coco.names', 'r') as f:
+            self.classes = f.read().splitlines()
+
+    def detect(self, img):
+        height, width, _ = img.shape
+
+        blob = cv2.dnn.blobFromImage(img, 1/255, (416,416), (0,0,0), swapRB=True, crop=False)
+
+        self.net.setInput(blob)
+        output_layer_names = self.net.getUnconnectedOutLayersNames()
+        layerOutputs = self.net.forward(output_layer_names)
+
+        boxes = []
+        confidences = []
+        class_ids = []
+
+        for output in layerOutputs:
+            for detection in output:
+                scores = detection[5:]
+                class_id = np.argmax(scores)
+                confidence = scores[class_id]
+                if confidence > 0.5:
+                    center_x = int(detection[0]*width)
+                    center_y = int(detection[1]*height)
+                    w = int(detection[2]*width)
+                    h = int(detection[3]*height)
+
+                    x = int(center_x - w/2)
+                    y = int(center_y - h/2)
+
+                    boxes.append([x,y,w,h])
+                    confidences.append((float(confidence)))
+                    class_ids.append(class_id)
+
+            # print(len(boxes))
+
+
+        indexes = np.array(cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4))
+        font = cv2.FONT_HERSHEY_TRIPLEX
+        colors = np.random.uniform(0, 255, size=(len(boxes), 2))
+
+        for i in indexes.flatten():
+            x, y, w, h = boxes[i]
+            label = str(self.classes[class_ids[i]])
+            confidence = str(round(confidences[i], 2))
+            color = colors[i]
+            cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
+            cv2.putText(img, label + " " + confidence, (x, y + 20), font, 0.5, (255, 255, 255), 1)
+            print(label)
+
+        return img
+
+        
+
 class Simulator:
-    def __init__(self, client = carla.Client('localhost', 2000)):
+    def __init__(self, client = carla.Client('localhost', 2000), spawn_flag = False):
         self.client = client
         self.sim_world = SimWorld(client)
         self.pygame_setup()
@@ -427,7 +485,20 @@ class Simulator:
         self.rgb_cam = Camera()
         self.gnss = GnssHelper()
         self.imu = ImuHelper()
+        
+        if spawn_flag:
+            self.spawn_passive_actors()
     
+
+    def spawn_passive_actors(self, n = 50):
+        world = self.sim_world.world
+        for i in range(n):
+            blueprint = random.choice(world.get_blueprint_library().filter('walker.*'))
+            spawn_points = world.get_map().get_spawn_points()
+            spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+            world.try_spawn_actor(blueprint, spawn_point)
+
+
     def pygame_setup(self):
         pygame.init()
         w = 1024
@@ -455,6 +526,8 @@ class Simulator:
 
         # Lane Detector
         self.ldetector = LaneDetectorHelper()
+        # Object Detector
+        self.odetector = ObjectDetector()
         # Gnss Spawn
         gnss_bp = self.sim_world.blueprint_library.find('sensor.other.gnss')
         self.gnss.spawn(self.sim_world, gnss_bp, carla.Transform(), attach=self.ego_vehicle.car)
@@ -493,6 +566,7 @@ class Simulator:
                             
                             cur_img = cur_img[:,:,::-1]
                             cur_img = self.ldetector.detect(cur_img)
+                            self.odetector.detect(cur_img)
                             surface = pygame.surfarray.make_surface(cur_img)
                             surface = pygame.transform.rotate(surface, -90)
                             surface = pygame.transform.flip(surface, True, False)
@@ -521,7 +595,7 @@ class Simulator:
 
 
 
-s = Simulator()
+s = Simulator(spawn_flag=True)
 s.setup()
 s.loop()
 
