@@ -5,6 +5,10 @@ import math
 import pygame
 import cv2
 import numpy
+import time
+import matplotlib.pyplot as plt
+import PIL
+from lane_detector import LaneDetector
 
 class KeyboardControl:
     def __init__(self, vehicle):
@@ -134,9 +138,15 @@ class Camera:
     # kameranın yakaladığı her frame tetiklediği fonksiyon
     def listener(self, image):
         self.img_dict[image.frame] = image
-        #print(image.frame)
-        #asyncio.create_task(image.save_to_disk('output/%06d.png' % image.frame))
     
+    def pop_image(self):
+        key_list = list(self.img_dict.keys())
+        if len(key_list) < 2:
+            return list()
+        return self.to_rgb_array(self.img_dict[key_list[-2]])
+        
+
+
     def to_bgra_array(self, image):
         """Convert a CARLA raw image to a BGRA numpy array."""
         array = numpy.frombuffer(image.raw_data, dtype=numpy.dtype("uint8"))
@@ -152,13 +162,19 @@ class Camera:
         #array = array[:, :, ::-1]
         return array
     
-    def flush(self):
-        video_name = 'mest.avi'
-        video = cv2.VideoWriter(video_name, 0, 10, (800, 600))
+    def flush(self, show = False, video_flag = False, height = 1024, width = 512):
+        video_name = 'sim_{}'.format(time.time())
+        if video_flag:
+            video = cv2.VideoWriter(video_name, 0, 10, (height, width))
+        
         for frame, img in self.img_dict.items():
-            #img.save_to_disk('output/%06d.png' % frame)
-            video.write(self.to_rgb_array(img))
-        video.release()
+            img.save_to_disk('output/%06d.png' % frame)
+            print(type(img))
+            if video_flag:
+                video.write(self.to_rgb_array(img))
+        
+        if video_flag:
+            video.release()
             
 
 
@@ -216,16 +232,36 @@ class SimWorld:
         return self.world.spawn_actor(actor.blueprint, actor.transform, attach_to = attach)
         
 
-
+class LaneDetectorHelper:
+    def __init__(self):
+        self.detector = LaneDetector()
+    
+    def detect(self, img):
+        cpy = img.copy()
+        left_poly, right_poly, left, right = self.detector(img)
+        lines = left + right
+        cpy[lines >= 0.5] = 255
+        
+        return cpy
+        #print(lines)
+        
 
 class Simulator:
     def __init__(self, client = carla.Client('localhost', 2000)):
         self.client = client
         self.sim_world = SimWorld(client)
-
+        self.pygame_setup()
         # Vehicle Init
         self.ego_vehicle = EgoVehicle()
         self.rgb_cam = Camera()
+    
+    def pygame_setup(self):
+        pygame.init()
+        w = 1024
+        h = 512
+        size = (w, h)
+        self.screen = pygame.display.set_mode(size)
+        self.clk = pygame.time.Clock()
 
     def setup(self):
         # Vehicle Spawn
@@ -236,11 +272,15 @@ class Simulator:
 
         # Camera Spawns
         camera_bp = self.sim_world.blueprint_library.find('sensor.camera.rgb')
-        camera_bp.set_attribute('sensor_tick', '0.02')
-        camera_transform = carla.Transform(carla.Location(x = -10, z=10), carla.Rotation(pitch = -30))
+        camera_bp.set_attribute('sensor_tick', '0.5')
+        camera_bp.set_attribute("image_size_x",str(1024))
+        camera_bp.set_attribute("image_size_y",str(512))
+        camera_transform = carla.Transform(carla.Location(x = 0.5, z = 1.3),carla.Rotation(pitch = -5))
         self.rgb_cam.spawn(self.sim_world, camera_bp, camera_transform, attach = self.ego_vehicle.car)
         print(self.rgb_cam.snapshot.get_transform())
 
+        # Lane Detector
+        self.ldetector = LaneDetectorHelper()
         
         with self.sim_world:
             self.sim_world.spectator.set_transform(self.rgb_cam.snapshot.get_transform())
@@ -251,13 +291,32 @@ class Simulator:
         kb_control = KeyboardControl(self.ego_vehicle)
         kb_control.listen()
         """
-        js_control = JoystickControl()
+        #js_control = JoystickControl()
         try : 
             while True:
                 with self.sim_world:
                     self.sim_world.spectator.set_transform(self.sim_world.snapshot.find(self.rgb_cam.cam.id).get_transform())
                     with self.ego_vehicle:
-                        js_control.get_control(self.ego_vehicle.controller)
+                        #js_control.get_control(self.ego_vehicle.controller)
+                        self.ego_vehicle.controller.throttle = 0.3
+                        cur_img = self.rgb_cam.pop_image()
+                        if len(cur_img) == 0:
+                            pass
+                        else:
+                            #img = pygame.image.load('output/temp.png')
+                            for event in pygame.event.get():
+                                if event.type == pygame.QUIT:
+                                    break
+                            
+                            cur_img = cur_img[:,:,::-1]
+                            cur_img = self.ldetector.detect(cur_img)
+                            surface = pygame.surfarray.make_surface(cur_img)
+                            surface = pygame.transform.rotate(surface, -90)
+                            surface = pygame.transform.flip(surface, True, False)
+                            self.screen.blit(surface, (0,0))
+                            pygame.display.flip()
+                            self.clk.tick(30)
+                            #pygame.time.delay(1500)
         except RuntimeError:
             pass
         finally:
