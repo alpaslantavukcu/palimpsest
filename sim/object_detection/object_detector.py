@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 class ObjectDetector:
     def __init__(self):
         self.net = cv2.dnn.readNet('D:\\yolov4.weights', 'D:\\yolov4.cfg')

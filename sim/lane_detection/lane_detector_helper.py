@@ -1,3 +1,4 @@
+from .lane_detector import LaneDetector
 
 class LaneDetectorHelper:
     def __init__(self):

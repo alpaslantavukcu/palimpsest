@@ -1,4 +1,4 @@
-from camera_geometry import CameraGeometry
+from .camera_geometry import CameraGeometry
 import numpy as np
 import albumentations as albu
 import cv2
