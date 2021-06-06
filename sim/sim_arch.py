@@ -13,6 +13,7 @@ from sensors.gnss import GnssHelper
 from sensors.imu import ImuHelper
 from object_detection.object_detector import ObjectDetector
 from localization.ekf import EKF
+from pure_pursuit import PurePursuitPlusPID
 
 
 class EgoVehicle:
@@ -134,6 +135,9 @@ class Simulator:
         # EKF
         self.ekf = EKF()
         self.ekf.set(-584315, 4116700, 1, 0.1)
+
+        # PurePursuit
+        self.controller = PurePursuitPlusPID()
         
     
     def loop(self):
@@ -166,6 +170,29 @@ class Simulator:
                             pygame.display.flip()
                             self.clk.tick(30)
                             #pygame.time.delay(1500)
+                            traj = self.ldetector.get_trajectory_from_lane_detector(cur_img)
+                            
+                            # get velocity and angular velocity
+                            """
+                            vel = carla_vec_to_np_array(vehicle.get_velocity())
+                            forward = carla_vec_to_np_array(vehicle.get_transform().get_forward_vector())
+                            right = carla_vec_to_np_array(vehicle.get_transform().get_right_vector())
+                            up = carla_vec_to_np_array(vehicle.get_transform().get_up_vector())
+                            vx = vel.dot(forward)
+                            vy = vel.dot(right)
+                            vz = vel.dot(up)
+                            ang_vel = carla_vec_to_np_array(vehicle.get_angular_velocity())
+                            w = ang_vel.dot(up)
+                            """
+                            actor_vel = self.ego_vehicle.car.get_velocity()
+                            vx = actor_vel.x
+                            vy = actor_vel.y
+                            vz = actor_vel.z
+                            print("vx vy vz w {:.2f} {:.2f} {:.2f}".format(vx,vy,vz))
+
+                            speed = np.linalg.norm([actor_vel.x, actor_vel.y, actor_vel.z])
+                            throttle, steer = self.controller.get_control(traj, speed, desired_speed=25, dt=0.1)
+                            self.ego_vehicle.controller.steer = steer
 
                         Vx = self.ego_vehicle.car.get_velocity().x
                         Yr = self.imu.Yr
@@ -177,6 +204,8 @@ class Simulator:
                         print("Sensor Data : ")
                         print("x : {}, y : {}, Vx : {}, Yr : {} ".format(x, y, Vx, Yr))
                         print("-------------------------------------------------------")
+                        self.ego_vehicle.controller.throttle = 0.3
+                        flag = False
         except RuntimeError:
             pass
         finally:

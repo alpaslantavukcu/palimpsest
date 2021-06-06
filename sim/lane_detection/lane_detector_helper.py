@@ -1,4 +1,5 @@
 from .lane_detector import LaneDetector
+import numpy as np
 
 class LaneDetectorHelper:
     def __init__(self):
@@ -23,3 +24,28 @@ class LaneDetectorHelper:
 
         return cpy
         #print(lines)
+
+    def get_target(self, img, x = 0.5):
+        cpy = img.copy()
+        left_poly, right_poly, left, right = self.detector(img)
+        l1 = left_poly(x)
+        r1 = right_poly(x)
+        dy = -0.5 * (l1 + r1)
+        dx = x + 0.5
+
+        return dx, dy
+    
+    def get_trajectory_from_lane_detector(self, image):
+        # get lane boundaries using the lane detector
+        poly_left, poly_right, _, _ = self.detector(image)
+        # trajectory to follow is the mean of left and right lane boundary
+        # note that we multiply with -0.5 instead of 0.5 in the formula for y below
+        # according to our lane detector x is forward and y is left, but
+        # according to Carla x is forward and y is right.
+        x = np.arange(-2,60,1.0)
+        y = -0.5*(poly_left(x)+poly_right(x))
+        # x,y is now in coordinates centered at camera, but camera is 0.5 in front of vehicle center
+        # hence correct x coordinates
+        x += 0.5
+        traj = np.stack((x,y)).T
+        return traj
