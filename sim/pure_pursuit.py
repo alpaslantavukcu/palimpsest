@@ -85,8 +85,8 @@ class PurePursuit:
     def get_control(self, waypoints, speed):
         # transform x coordinates of waypoints such that coordinate origin is in rear wheel
         waypoints[:,0] += self.waypoint_shift
-        look_ahead_distance = np.clip(self.K_dd * speed, 3,20)
-
+        #look_ahead_distance = np.clip(self.K_dd * speed, 7,20)
+        look_ahead_distance = 10
         track_point = get_target_point(look_ahead_distance, waypoints)
         if track_point is None:
             return 0

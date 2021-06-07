@@ -215,7 +215,7 @@ class Simulator:
                             print("Sensor Data : ")
                             print("x : {}, y : {}, Vx : {}, Yr : {} ".format(x, y, Vx, Yr))
                             print("-------------------------------------------------------")
-                            self.ego_vehicle.controller.throttle = 0.3
+                            self.ego_vehicle.controller.throttle = 0.4
                             flag = False
                         except TypeError:
                             pass
