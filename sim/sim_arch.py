@@ -16,6 +16,11 @@ from localization.ekf import EKF
 from pure_pursuit import PurePursuitPlusPID
 
 
+def carla_vec_to_np_array(vec):
+    return np.array([vec.x,
+                     vec.y,
+                     vec.z])
+
 class EgoVehicle:
     def __init__(self, controller = carla.VehicleControl()):
         self.controller = controller
@@ -104,15 +109,16 @@ class Simulator:
     def setup(self):
         # Vehicle Spawn
         ego_blueprint = self.sim_world.blueprint_library.find('vehicle.mini.cooperst')
-        ego_transform = carla.Transform(carla.Location(x=-88.3, y=21.5, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
+        ego_transform = carla.Transform(carla.Location(x=-88.6, y=151.9, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
         self.ego_vehicle.spawn(self.sim_world, ego_blueprint, ego_transform)
         print(self.ego_vehicle.snapshot.get_transform())
 
         # Camera Spawns
         camera_bp = self.sim_world.blueprint_library.find('sensor.camera.rgb')
-        camera_bp.set_attribute('sensor_tick', '0.5')
+        camera_bp.set_attribute('sensor_tick', '0.1')
         camera_bp.set_attribute("image_size_x",str(1024))
         camera_bp.set_attribute("image_size_y",str(512))
+        camera_bp.set_attribute('fov', '60')
         camera_transform = carla.Transform(carla.Location(x = 0.5, z = 1.3),carla.Rotation(pitch = -5))
         self.rgb_cam.spawn(self.sim_world, camera_bp, camera_transform, attach = self.ego_vehicle.car)
         print(self.rgb_cam.snapshot.get_transform())
@@ -149,63 +155,70 @@ class Simulator:
                 with self.sim_world:
                     self.sim_world.spectator.set_transform(self.sim_world.snapshot.find(self.rgb_cam.cam.id).get_transform())
                     with self.ego_vehicle:
-                        #js_control.get_control(self.ego_vehicle.controller)
-                        self.ego_vehicle.controller.throttle = 0.3
-                        cur_img = self.rgb_cam.pop_image()
-                        if len(cur_img) == 0:
+                        try :
+                            #js_control.get_control(self.ego_vehicle.controller)
+                            self.ego_vehicle.controller.throttle = 0.3
+                            cur_img = self.rgb_cam.pop_image()
+                            if len(cur_img) == 0:
+                                pass
+                            else:
+                                #img = pygame.image.load('output/temp.png')
+                                for event in pygame.event.get():
+                                    if event.type == pygame.QUIT:
+                                        break
+                                
+                                cur_img = cur_img[:,:,::-1]
+                                cur_img = self.ldetector.detect(cur_img)
+                                self.odetector.detect(cur_img)
+                                surface = pygame.surfarray.make_surface(cur_img)
+                                surface = pygame.transform.rotate(surface, -90)
+                                surface = pygame.transform.flip(surface, True, False)
+                                self.screen.blit(surface, (0,0))
+                                pygame.display.flip()
+                                self.clk.tick(30)
+                                #pygame.time.delay(1500)
+                                traj = self.ldetector.get_trajectory_from_lane_detector(cur_img)
+                                
+                                # get velocity and angular velocity
+                                vel = carla_vec_to_np_array(self.ego_vehicle.car.get_velocity())
+                                forward = carla_vec_to_np_array(self.ego_vehicle.car.get_transform().get_forward_vector())
+                                right = carla_vec_to_np_array(self.ego_vehicle.car.get_transform().get_right_vector())
+                                up = carla_vec_to_np_array(self.ego_vehicle.car.get_transform().get_up_vector())
+                                vx = vel.dot(forward)
+                                vy = vel.dot(right)
+                                vz = vel.dot(up)
+                                ang_vel = carla_vec_to_np_array(self.ego_vehicle.car.get_angular_velocity())
+                                w = ang_vel.dot(up)
+                                print("vx vy vz w {:.2f} {:.2f} {:.2f} {:.5f}".format(vx,vy,vz,w))
+
+                                speed = np.linalg.norm( carla_vec_to_np_array(self.ego_vehicle.car.get_velocity()))
+                                """
+                                actor_vel = self.ego_vehicle.car.get_velocity()
+                                vx = actor_vel.x
+                                vy = actor_vel.y
+                                vz = actor_vel.z
+                                
+                                print("vx vy vz w {:.2f} {:.2f} {:.2f}".format(vx,vy,vz))
+                                speed = np.linalg.norm([actor_vel.x, actor_vel.y, actor_vel.z])
+                                """
+                                throttle, steer = self.controller.get_control(traj, speed, desired_speed=25, dt=0.1)
+                                print("steer : {}".format(steer))
+                                self.ego_vehicle.controller.steer = steer
+
+                            Vx = self.ego_vehicle.car.get_velocity().x
+                            Yr = self.imu.Yr
+                            x = self.gnss.x
+                            y = self.gnss.y
+                            hxEst, hxTrue = self.ekf.run(x, y, Vx, Yr)
+                            print("-------------------------------------------------------")
+                            print(hxEst)
+                            print("Sensor Data : ")
+                            print("x : {}, y : {}, Vx : {}, Yr : {} ".format(x, y, Vx, Yr))
+                            print("-------------------------------------------------------")
+                            self.ego_vehicle.controller.throttle = 0.3
+                            flag = False
+                        except TypeError:
                             pass
-                        else:
-                            #img = pygame.image.load('output/temp.png')
-                            for event in pygame.event.get():
-                                if event.type == pygame.QUIT:
-                                    break
-                            
-                            cur_img = cur_img[:,:,::-1]
-                            cur_img = self.ldetector.detect(cur_img)
-                            self.odetector.detect(cur_img)
-                            surface = pygame.surfarray.make_surface(cur_img)
-                            surface = pygame.transform.rotate(surface, -90)
-                            surface = pygame.transform.flip(surface, True, False)
-                            self.screen.blit(surface, (0,0))
-                            pygame.display.flip()
-                            self.clk.tick(30)
-                            #pygame.time.delay(1500)
-                            traj = self.ldetector.get_trajectory_from_lane_detector(cur_img)
-                            
-                            # get velocity and angular velocity
-                            """
-                            vel = carla_vec_to_np_array(vehicle.get_velocity())
-                            forward = carla_vec_to_np_array(vehicle.get_transform().get_forward_vector())
-                            right = carla_vec_to_np_array(vehicle.get_transform().get_right_vector())
-                            up = carla_vec_to_np_array(vehicle.get_transform().get_up_vector())
-                            vx = vel.dot(forward)
-                            vy = vel.dot(right)
-                            vz = vel.dot(up)
-                            ang_vel = carla_vec_to_np_array(vehicle.get_angular_velocity())
-                            w = ang_vel.dot(up)
-                            """
-                            actor_vel = self.ego_vehicle.car.get_velocity()
-                            vx = actor_vel.x
-                            vy = actor_vel.y
-                            vz = actor_vel.z
-                            print("vx vy vz w {:.2f} {:.2f} {:.2f}".format(vx,vy,vz))
-
-                            speed = np.linalg.norm([actor_vel.x, actor_vel.y, actor_vel.z])
-                            throttle, steer = self.controller.get_control(traj, speed, desired_speed=25, dt=0.1)
-                            self.ego_vehicle.controller.steer = steer
-
-                        Vx = self.ego_vehicle.car.get_velocity().x
-                        Yr = self.imu.Yr
-                        x = self.gnss.x
-                        y = self.gnss.y
-                        hxEst, hxTrue = self.ekf.run(x, y, Vx, Yr)
-                        print("-------------------------------------------------------")
-                        print(hxEst)
-                        print("Sensor Data : ")
-                        print("x : {}, y : {}, Vx : {}, Yr : {} ".format(x, y, Vx, Yr))
-                        print("-------------------------------------------------------")
-                        self.ego_vehicle.controller.throttle = 0.3
-                        flag = False
         except RuntimeError:
             pass
         finally:
