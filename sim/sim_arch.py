@@ -14,6 +14,7 @@ from sensors.imu import ImuHelper
 from object_detection.object_detector import ObjectDetector
 from localization.ekf import EKF
 from pure_pursuit import PurePursuitPlusPID
+from syi.syi_dummy import SyiDummy
 
 
 def carla_vec_to_np_array(vec):
@@ -74,7 +75,7 @@ class SimWorld:
         
 
 class Simulator:
-    def __init__(self, client = carla.Client('localhost', 2000), spawn_flag = False):
+    def __init__(self, client = carla.Client('localhost', 2000), spawn_flag = False, show_lane_object = False):
         self.client = client
         self.sim_world = SimWorld(client)
         self.pygame_setup()
@@ -83,6 +84,8 @@ class Simulator:
         self.rgb_cam = Camera()
         self.gnss = GnssHelper()
         self.imu = ImuHelper()
+
+        self.show_lane_obj = show_lane_object
         
         if spawn_flag:
             self.spawn_passive_actors()
@@ -104,6 +107,10 @@ class Simulator:
         size = (w, h)
         self.screen = pygame.display.set_mode(size)
         self.clk = pygame.time.Clock()
+        
+        pygame.font.init() # you have to call this at the start, 
+                   # if you want to use this module.
+        self.font = pygame.font.SysFont(pygame.font.get_default_font(), 24)
 
         
     def setup(self):
@@ -144,6 +151,17 @@ class Simulator:
 
         # PurePursuit
         self.controller = PurePursuitPlusPID()
+
+        # SYI
+        self.syi = SyiDummy()
+
+        # Cam Capture
+        self.cap = cv2.VideoCapture(0)
+
+        #width, height = 256, 144
+
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 256)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 144)
         
     
     def loop(self):
@@ -168,16 +186,35 @@ class Simulator:
                                         break
                                 
                                 cur_img = cur_img[:,:,::-1]
-                                cur_img = self.ldetector.detect(cur_img)
-                                self.odetector.detect(cur_img)
+                                if self.show_lane_obj:
+                                    cur_img = self.ldetector.detect(cur_img)
+                                    self.odetector.detect(cur_img)
+
                                 surface = pygame.surfarray.make_surface(cur_img)
                                 surface = pygame.transform.rotate(surface, -90)
                                 surface = pygame.transform.flip(surface, True, False)
                                 self.screen.blit(surface, (0,0))
+
+                                ret, frame = self.cap.read()
+                                img = cv2.resize(frame, (256, 144), interpolation = cv2.INTER_AREA)
+                                img = pygame.image.frombuffer(img, (256, 144), "BGR")
+                                self.screen.blit(img, (768,0))
+
+
+                                
+                                tpm, pc, sdlp = self.syi.update_random()
+                                dec = self.syi.decision()
+                                text_tpm  = self.font.render("TPM  : %.2f" % tpm,  True,  (255, 0, 0))
+                                text_pc   = self.font.render("PC   : %.2f" % pc,   True,   (255, 0, 0))
+                                text_sdlp = self.font.render("SDLP : %.2f" % sdlp, True, (255, 0, 0))
+                                text_dec  = self.font.render("DEC  : %.2f" % dec, True, (255, 0, 0))
+                                self.screen.blit(text_tpm, (768, 144))
+                                self.screen.blit(text_pc, (768, 174))
+                                self.screen.blit(text_sdlp, (768, 204))
+                                self.screen.blit(text_dec, (768, 234))
+
                                 pygame.display.flip()
                                 self.clk.tick(30)
-                                #pygame.time.delay(1500)
-                                traj = self.ldetector.get_trajectory_from_lane_detector(cur_img)
                                 
                                 # get velocity and angular velocity
                                 vel = carla_vec_to_np_array(self.ego_vehicle.car.get_velocity())
@@ -190,20 +227,20 @@ class Simulator:
                                 ang_vel = carla_vec_to_np_array(self.ego_vehicle.car.get_angular_velocity())
                                 w = ang_vel.dot(up)
                                 print("vx vy vz w {:.2f} {:.2f} {:.2f} {:.5f}".format(vx,vy,vz,w))
-
                                 speed = np.linalg.norm( carla_vec_to_np_array(self.ego_vehicle.car.get_velocity()))
-                                """
-                                actor_vel = self.ego_vehicle.car.get_velocity()
-                                vx = actor_vel.x
-                                vy = actor_vel.y
-                                vz = actor_vel.z
-                                
-                                print("vx vy vz w {:.2f} {:.2f} {:.2f}".format(vx,vy,vz))
-                                speed = np.linalg.norm([actor_vel.x, actor_vel.y, actor_vel.z])
-                                """
-                                throttle, steer = self.controller.get_control(traj, speed, desired_speed=25, dt=0.1)
-                                print("steer : {}".format(steer))
-                                self.ego_vehicle.controller.steer = steer
+
+                                dec = 4
+
+                                if dec == 4:
+                                    traj = self.ldetector.get_trajectory_from_lane_detector(cur_img)
+                                    throttle, steer = self.controller.get_control(traj, speed, desired_speed=10, dt=0.1)
+                                    print("steer : {}".format(steer))
+                                    print("throttle : {}".format(throttle))
+                                    self.ego_vehicle.controller.steer = steer
+                                    self.ego_vehicle.controller.throttle = np.clip(throttle, 0, 0.7)
+                                else:
+                                    print("Manual Control!!!")
+                                    self.ego_vehicle.controller.throttle = 0.4
 
                             Vx = self.ego_vehicle.car.get_velocity().x
                             Yr = self.imu.Yr
@@ -215,7 +252,6 @@ class Simulator:
                             print("Sensor Data : ")
                             print("x : {}, y : {}, Vx : {}, Yr : {} ".format(x, y, Vx, Yr))
                             print("-------------------------------------------------------")
-                            self.ego_vehicle.controller.throttle = 0.4
                             flag = False
                         except TypeError:
                             pass

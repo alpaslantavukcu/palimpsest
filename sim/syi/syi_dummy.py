@@ -2,7 +2,7 @@ import random as r
 import numpy as np
 
 class SyiDummy:
-    def __init__(self, tpm = 10, pc = 0.25, sdlp = 0.2) -> None:
+    def __init__(self, tpm = 14, pc = 0.25, sdlp = 0.2) -> None:
         self.tpm = tpm
         self.pc = pc
         self.sdlp = sdlp
@@ -12,16 +12,18 @@ class SyiDummy:
         i = r.randint(0, 2)
         if i == 0: #tpm
             tpm_sd = 4
-            [change] = np.random.normal(0, tpm_sd, 1)
+            [change] = np.random.normal(0, tpm_sd / 2, 1)
             self.tpm += change
         elif i == 1:
             pc_sd = 0.10
-            [change] = np.random.normal(0, pc_sd, 1)
+            [change] = np.random.normal(0, pc_sd / 2, 1)
             self.pc += change     
         elif i == 2:
             sdlp_sd = 0.09
-            [change] = np.random.normal(0, sdlp_sd, 1)
-            self.pc += change                   
+            [change] = np.random.normal(0, sdlp_sd / 2, 1)
+            self.pc += change
+
+        return self.tpm, self.pc, self.sdlp                   
 
 
     def decision(self):
