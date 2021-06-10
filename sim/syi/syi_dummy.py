@@ -1,12 +1,21 @@
 import random as r
 import numpy as np
+from .dpc.exp.dist_pc import DistPlusPerclos
 
 class SyiDummy:
     def __init__(self, tpm = 14, pc = 0.25, sdlp = 0.2) -> None:
         self.tpm = tpm
         self.pc = pc
         self.sdlp = sdlp
+        self.dpc = DistPlusPerclos()
+        self.strongest_label, self.PERCLOS, self.point = None, None, None
     
+
+    def update(self, img):
+        self.update_random()
+        self.strongest_label, self.PERCLOS, self.point = self.dpc.make_prediction(img)
+
+        return self.tpm, self.pc, self.sdlp, self.strongest_label, self.PERCLOS, self.point
 
     def update_random(self):
         i = r.randint(0, 2)

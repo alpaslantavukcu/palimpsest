@@ -15,6 +15,7 @@ from object_detection.object_detector import ObjectDetector
 from localization.ekf import EKF
 from pure_pursuit import PurePursuitPlusPID
 from syi.syi_dummy import SyiDummy
+#from syi.dpc.exp.dist_pc import predict
 
 
 def carla_vec_to_np_array(vec):
@@ -160,9 +161,11 @@ class Simulator:
 
         #width, height = 256, 144
 
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 256)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 144)
-        
+        #self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 256)
+        #self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 144)
+
+        # distracted predict
+        #self.pred = predict()
     
     def loop(self):
         kb_control = KeyboardControl(self.ego_vehicle)
@@ -199,19 +202,28 @@ class Simulator:
                                 img = cv2.resize(frame, (256, 144), interpolation = cv2.INTER_AREA)
                                 img = pygame.image.frombuffer(img, (256, 144), "BGR")
                                 self.screen.blit(img, (768,0))
-
+                                
+                                #self.pred.mainloop(frame)
+                                #self.pred.detection(frame)
 
                                 
-                                tpm, pc, sdlp = self.syi.update_random()
+                                tpm, pc, sdlp, strongest_label, PERCLOS, point = self.syi.update(frame)
+                                #tpm, pc, sdlp = self.syi.update_random()
                                 dec = self.syi.decision()
                                 text_tpm  = self.font.render("TPM  : %.2f" % tpm,  True,  (255, 0, 0))
                                 text_pc   = self.font.render("PC   : %.2f" % pc,   True,   (255, 0, 0))
                                 text_sdlp = self.font.render("SDLP : %.2f" % sdlp, True, (255, 0, 0))
                                 text_dec  = self.font.render("DEC  : %.2f" % dec, True, (255, 0, 0))
+                                text_label = self.font.render("Label : %s" % strongest_label, True, (255, 0, 0))
+                                text_pc2  = self.font.render("PER  : %.2f" % PERCLOS, True, (255, 0, 0))
+                                text_point = self.font.render("Poi  : %.2f" % point, True, (255, 0, 0))
                                 self.screen.blit(text_tpm, (768, 144))
                                 self.screen.blit(text_pc, (768, 174))
                                 self.screen.blit(text_sdlp, (768, 204))
                                 self.screen.blit(text_dec, (768, 234))
+                                self.screen.blit(text_label, (768, 264))
+                                self.screen.blit(text_pc2, (768, 294))
+                                self.screen.blit(text_point, (768, 324))
 
                                 pygame.display.flip()
                                 self.clk.tick(30)
