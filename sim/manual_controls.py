@@ -1,11 +1,12 @@
 import pygame
-
+import math
 from pynput import keyboard
 from configparser import ConfigParser
 
 class KeyboardControl:
     def __init__(self, vehicle):
         self.ego_vehicle = vehicle
+        self.flag = False
 
     def listen(self):
         # Collect events until released
@@ -17,6 +18,9 @@ class KeyboardControl:
     def on_press(self, key):
         try:
             if key == keyboard.Key.up:
+                self.flag = True
+            """
+            if key == keyboard.Key.up:
                 self.ego_vehicle.controller.throttle = min(self.ego_vehicle.controller.throttle + 0.01, 1)
             else:
                 self.ego_vehicle.controller.throttle = 0.0
@@ -27,6 +31,8 @@ class KeyboardControl:
                 self.ego_vehicle.controller.brake = 0
             
             self.ego_vehicle.update()
+
+            """
         except AttributeError:
             print('special key {0} pressed'.format(key))
 

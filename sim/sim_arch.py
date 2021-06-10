@@ -167,7 +167,7 @@ class Simulator:
     def loop(self):
         kb_control = KeyboardControl(self.ego_vehicle)
         kb_control.listen()
-        #js_control = JoystickControl()
+        js_control = JoystickControl()
         try : 
             while True:
                 with self.sim_world:
@@ -229,9 +229,7 @@ class Simulator:
                                 print("vx vy vz w {:.2f} {:.2f} {:.2f} {:.5f}".format(vx,vy,vz,w))
                                 speed = np.linalg.norm( carla_vec_to_np_array(self.ego_vehicle.car.get_velocity()))
 
-                                dec = 4
-
-                                if dec == 4:
+                                if kb_control.flag:
                                     traj = self.ldetector.get_trajectory_from_lane_detector(cur_img)
                                     throttle, steer = self.controller.get_control(traj, speed, desired_speed=10, dt=0.1)
                                     print("steer : {}".format(steer))
@@ -240,7 +238,8 @@ class Simulator:
                                     self.ego_vehicle.controller.throttle = np.clip(throttle, 0, 0.7)
                                 else:
                                     print("Manual Control!!!")
-                                    self.ego_vehicle.controller.throttle = 0.4
+                                    js_control.get_control(self.ego_vehicle.controller)
+                                    #self.ego_vehicle.controller.throttle = 0.4
 
                             Vx = self.ego_vehicle.car.get_velocity().x
                             Yr = self.imu.Yr
