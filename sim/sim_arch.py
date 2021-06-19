@@ -14,7 +14,7 @@ from sensors.imu import ImuHelper
 from object_detection.object_detector import ObjectDetector
 from localization.ekf import EKF
 from pure_pursuit import PurePursuitPlusPID
-from syi.syi_dummy import SyiDummy
+from syi.syi_helper import SyiHelper
 #from syi.dpc.exp.dist_pc import predict
 
 
@@ -154,7 +154,7 @@ class Simulator:
         self.controller = PurePursuitPlusPID()
 
         # SYI
-        self.syi = SyiDummy()
+        self.syi = SyiHelper()
 
         # Cam Capture
         self.cap = cv2.VideoCapture(0)
@@ -189,8 +189,9 @@ class Simulator:
                                         break
                                 
                                 cur_img = cur_img[:,:,::-1]
+                                self.ldetector.detect(cur_img)
                                 if self.show_lane_obj:
-                                    cur_img = self.ldetector.detect(cur_img)
+                                    cur_img = self.ldetector.draw(cur_img)
                                     self.odetector.detect(cur_img)
 
                                 surface = pygame.surfarray.make_surface(cur_img)
@@ -210,20 +211,27 @@ class Simulator:
                                 tpm, pc, sdlp, strongest_label, PERCLOS, point = self.syi.update(frame)
                                 #tpm, pc, sdlp = self.syi.update_random()
                                 dec = self.syi.decision()
-                                text_tpm  = self.font.render("TPM  : %.2f" % tpm,  True,  (255, 0, 0))
-                                text_pc   = self.font.render("PC   : %.2f" % pc,   True,   (255, 0, 0))
-                                text_sdlp = self.font.render("SDLP : %.2f" % sdlp, True, (255, 0, 0))
-                                text_dec  = self.font.render("DEC  : %.2f" % dec, True, (255, 0, 0))
-                                text_label = self.font.render("Label : %s" % strongest_label, True, (255, 0, 0))
-                                text_pc2  = self.font.render("PER  : %.2f" % PERCLOS, True, (255, 0, 0))
-                                text_point = self.font.render("Poi  : %.2f" % point, True, (255, 0, 0))
-                                self.screen.blit(text_tpm, (768, 144))
-                                self.screen.blit(text_pc, (768, 174))
-                                self.screen.blit(text_sdlp, (768, 204))
-                                self.screen.blit(text_dec, (768, 234))
-                                self.screen.blit(text_label, (768, 264))
-                                self.screen.blit(text_pc2, (768, 294))
-                                self.screen.blit(text_point, (768, 324))
+                                txt_color = (255, 255, 255)
+                                text_tpm  = self.font.render( "TPM   : %.2f" % tpm,  True,  txt_color)
+                                text_pc   = self.font.render( "PC    : %.2f" % PERCLOS,   True,   txt_color)
+                                text_sdlp = self.font.render( "SDLP  : %.2f" % sdlp, True, txt_color)
+                                text_dec  = self.font.render( "DEC   : %.2f" % dec, True, txt_color)
+                                text_label = self.font.render("Label : %s" % strongest_label, True, txt_color)
+                                #text_pc2  = self.font.render( "PER   : %.2f" % PERCLOS, True, txt_color)
+                                text_point = self.font.render("POI   : %.2f" % point, True, txt_color)
+
+                                rect = pygame.Surface((256, 368))
+                                rect.set_alpha(168)
+                                # 102, 102, 153
+                                rect.fill((102, 102, 153))
+                                self.screen.blit(rect, (768, 144))
+                                self.screen.blit(text_tpm, (778, 154))
+                                self.screen.blit(text_pc, (778, 184))
+                                self.screen.blit(text_sdlp, (778, 214))
+                                self.screen.blit(text_point, (778, 244))
+                                self.screen.blit(text_label, (778, 274))
+                                #self.screen.blit(text_pc2, (778, 304))
+                                self.screen.blit(text_dec, (778, 334))
 
                                 pygame.display.flip()
                                 self.clk.tick(30)
@@ -242,7 +250,7 @@ class Simulator:
                                 speed = np.linalg.norm( carla_vec_to_np_array(self.ego_vehicle.car.get_velocity()))
 
                                 if kb_control.flag:
-                                    traj = self.ldetector.get_trajectory_from_lane_detector(cur_img)
+                                    traj = self.ldetector.get_trajectory_from_lane_detector()
                                     throttle, steer = self.controller.get_control(traj, speed, desired_speed=10, dt=0.1)
                                     print("steer : {}".format(steer))
                                     print("throttle : {}".format(throttle))

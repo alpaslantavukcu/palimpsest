@@ -4,11 +4,17 @@ import numpy as np
 class LaneDetectorHelper:
     def __init__(self):
         self.detector = LaneDetector()
+        self.poly_left = None
+        self.poly_right = None
+        self.left = None
+        self.right = None
     
     def detect(self, img):
+        self.poly_left, self.poly_right, self.left, self.right = self.detector(img)
+
+    def draw(self, img):
         cpy = img.copy()
-        left_poly, right_poly, left, right = self.detector(img)
-        lines = left + right
+        lines = self.left + self.right
         
         ## Find better way !
         cpy_r = cpy[:, :, 0]
@@ -28,22 +34,22 @@ class LaneDetectorHelper:
     def get_target(self, img, x = 0.5):
         cpy = img.copy()
         left_poly, right_poly, left, right = self.detector(img)
-        l1 = left_poly(x)
-        r1 = right_poly(x)
+        l1 = self.poly_left(x)
+        r1 = self.poly_right(x)
         dy = -0.5 * (l1 + r1)
         dx = x + 0.5
 
         return dx, dy
     
-    def get_trajectory_from_lane_detector(self, image):
+    def get_trajectory_from_lane_detector(self):
         # get lane boundaries using the lane detector
-        poly_left, poly_right, _, _ = self.detector(image)
+        #poly_left, poly_right, _, _ = self.detector(image)
         # trajectory to follow is the mean of left and right lane boundary
         # note that we multiply with -0.5 instead of 0.5 in the formula for y below
         # according to our lane detector x is forward and y is left, but
         # according to Carla x is forward and y is right.
         x = np.arange(-2,60,1.0)
-        y = -0.5*(poly_left(x)+poly_right(x))
+        y = -0.5*(self.poly_left(x)+self.poly_right(x))
         # x,y is now in coordinates centered at camera, but camera is 0.5 in front of vehicle center
         # hence correct x coordinates
         x += 0.5
