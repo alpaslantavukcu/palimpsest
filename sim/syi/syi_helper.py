@@ -7,11 +7,14 @@ class SyiHelper:
         self.tpm = tpm
         self.pc = pc
         self.sdlp = sdlp
+        self.diff_list = []
         self.dpc = DistPlusPerclos()
         self.strongest_label, self.PERCLOS, self.point = None, None, None
     
 
-    def update(self, img):
+    def update(self, img, dif):
+        self.diff_list.append(dif)
+        self.sdlp = np.std(self.diff_list)
         #self.update_random()
         self.strongest_label, self.PERCLOS, self.point = self.dpc.make_prediction(img)
 

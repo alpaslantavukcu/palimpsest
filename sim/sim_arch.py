@@ -15,7 +15,6 @@ from object_detection.object_detector import ObjectDetector
 from localization.ekf import EKF
 from pure_pursuit import PurePursuitPlusPID
 from syi.syi_helper import SyiHelper
-#from syi.dpc.exp.dist_pc import predict
 
 
 def carla_vec_to_np_array(vec):
@@ -39,8 +38,6 @@ class EgoVehicle:
     def __enter__(self):
         pass
     
-    # bu sentaks update işleminin sürekli manuel çağrılmaması ve alternatif senaryolar için düşünüldü
-    # bununla beraber enter fonkiyonunun olmaması gerekliliğini sorgulatmakta
     def __exit__(self, type, value, traceback):
         self.update()
 
@@ -109,8 +106,7 @@ class Simulator:
         self.screen = pygame.display.set_mode(size)
         self.clk = pygame.time.Clock()
         
-        pygame.font.init() # you have to call this at the start, 
-                   # if you want to use this module.
+        pygame.font.init()
         self.font = pygame.font.SysFont(pygame.font.get_default_font(), 24)
 
         
@@ -119,7 +115,6 @@ class Simulator:
         ego_blueprint = self.sim_world.blueprint_library.find('vehicle.mini.cooperst')
         ego_transform = carla.Transform(carla.Location(x=-88.6, y=151.9, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
         self.ego_vehicle.spawn(self.sim_world, ego_blueprint, ego_transform)
-        print(self.ego_vehicle.snapshot.get_transform())
 
         # Camera Spawns
         camera_bp = self.sim_world.blueprint_library.find('sensor.camera.rgb')
@@ -129,7 +124,6 @@ class Simulator:
         camera_bp.set_attribute('fov', '60')
         camera_transform = carla.Transform(carla.Location(x = 0.5, z = 1.3),carla.Rotation(pitch = -5))
         self.rgb_cam.spawn(self.sim_world, camera_bp, camera_transform, attach = self.ego_vehicle.car)
-        print(self.rgb_cam.snapshot.get_transform())
 
         # Lane Detector
         self.ldetector = LaneDetectorHelper()
@@ -158,14 +152,6 @@ class Simulator:
 
         # Cam Capture
         self.cap = cv2.VideoCapture(0)
-
-        #width, height = 256, 144
-
-        #self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 256)
-        #self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 144)
-
-        # distracted predict
-        #self.pred = predict()
     
     def loop(self):
         kb_control = KeyboardControl(self.ego_vehicle)
@@ -177,7 +163,6 @@ class Simulator:
                     self.sim_world.spectator.set_transform(self.sim_world.snapshot.find(self.rgb_cam.cam.id).get_transform())
                     with self.ego_vehicle:
                         try :
-                            #js_control.get_control(self.ego_vehicle.controller)
                             self.ego_vehicle.controller.throttle = 0.3
                             cur_img = self.rgb_cam.pop_image()
                             if len(cur_img) == 0:
@@ -204,25 +189,27 @@ class Simulator:
                                 img = pygame.image.frombuffer(img, (256, 144), "BGR")
                                 self.screen.blit(img, (768,0))
                                 
-                                #self.pred.mainloop(frame)
-                                #self.pred.detection(frame)
 
-                                
-                                tpm, pc, sdlp, strongest_label, PERCLOS, point = self.syi.update(frame)
-                                #tpm, pc, sdlp = self.syi.update_random()
+                                vehicle_diff = self.ldetector.calculate_vehicle_diff()
+                                tpm, pc, sdlp, strongest_label, PERCLOS, point = self.syi.update(frame, vehicle_diff)
                                 dec = self.syi.decision()
+
                                 txt_color = (255, 255, 255)
                                 text_tpm  = self.font.render( "TPM   : %.2f" % tpm,  True,  txt_color)
                                 text_pc   = self.font.render( "PC    : %.2f" % PERCLOS,   True,   txt_color)
                                 text_sdlp = self.font.render( "SDLP  : %.2f" % sdlp, True, txt_color)
                                 text_dec  = self.font.render( "DEC   : %.2f" % dec, True, txt_color)
                                 text_label = self.font.render("Label : %s" % strongest_label, True, txt_color)
-                                #text_pc2  = self.font.render( "PER   : %.2f" % PERCLOS, True, txt_color)
                                 text_point = self.font.render("POI   : %.2f" % point, True, txt_color)
+
+                                if kb_control.flag:
+                                    text_status = self.font.render("OTOMATIK KONTROL MODU", True, (255, 0 , 0))
+                                else:
+                                    text_status = self.font.render("MANUEL KONTROL MODU", True, (0, 255 , 0))
+                                    
 
                                 rect = pygame.Surface((256, 368))
                                 rect.set_alpha(168)
-                                # 102, 102, 153
                                 rect.fill((102, 102, 153))
                                 self.screen.blit(rect, (768, 144))
                                 self.screen.blit(text_tpm, (778, 154))
@@ -230,8 +217,8 @@ class Simulator:
                                 self.screen.blit(text_sdlp, (778, 214))
                                 self.screen.blit(text_point, (778, 244))
                                 self.screen.blit(text_label, (778, 274))
-                                #self.screen.blit(text_pc2, (778, 304))
                                 self.screen.blit(text_dec, (778, 334))
+                                self.screen.blit(text_status, (778, 424))
 
                                 pygame.display.flip()
                                 self.clk.tick(30)
@@ -246,31 +233,21 @@ class Simulator:
                                 vz = vel.dot(up)
                                 ang_vel = carla_vec_to_np_array(self.ego_vehicle.car.get_angular_velocity())
                                 w = ang_vel.dot(up)
-                                print("vx vy vz w {:.2f} {:.2f} {:.2f} {:.5f}".format(vx,vy,vz,w))
                                 speed = np.linalg.norm( carla_vec_to_np_array(self.ego_vehicle.car.get_velocity()))
 
                                 if kb_control.flag:
                                     traj = self.ldetector.get_trajectory_from_lane_detector()
                                     throttle, steer = self.controller.get_control(traj, speed, desired_speed=10, dt=0.1)
-                                    print("steer : {}".format(steer))
-                                    print("throttle : {}".format(throttle))
                                     self.ego_vehicle.controller.steer = steer
                                     self.ego_vehicle.controller.throttle = np.clip(throttle, 0, 0.7)
                                 else:
-                                    print("Manual Control!!!")
                                     js_control.get_control(self.ego_vehicle.controller)
-                                    #self.ego_vehicle.controller.throttle = 0.4
 
                             Vx = self.ego_vehicle.car.get_velocity().x
                             Yr = self.imu.Yr
                             x = self.gnss.x
                             y = self.gnss.y
                             hxEst, hxTrue = self.ekf.run(x, y, Vx, Yr)
-                            print("-------------------------------------------------------")
-                            print(hxEst)
-                            print("Sensor Data : ")
-                            print("x : {}, y : {}, Vx : {}, Yr : {} ".format(x, y, Vx, Yr))
-                            print("-------------------------------------------------------")
                             flag = False
                         except TypeError:
                             pass
@@ -284,7 +261,7 @@ class Simulator:
 
 
 
-s = Simulator(spawn_flag=True)
+s = Simulator(spawn_flag=False)
 s.setup()
 s.loop()
 

@@ -55,3 +55,11 @@ class LaneDetectorHelper:
         x += 0.5
         traj = np.stack((x,y)).T
         return traj
+
+    def calculate_vehicle_diff(self):
+        #x = np.arange(0, 10, 0.1)
+        x = 0.1
+        yl = self.poly_left(x)
+        yr = self.poly_right(x)
+        diff_from_vehicle = yl + (yr - yl) / 2
+        return diff_from_vehicle
