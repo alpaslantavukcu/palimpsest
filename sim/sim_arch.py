@@ -107,13 +107,14 @@ class Simulator:
         self.clk = pygame.time.Clock()
         
         pygame.font.init()
-        self.font = pygame.font.SysFont(pygame.font.get_default_font(), 24)
+        self.font = pygame.font.SysFont('couriernew', 20, bold=True)
 
         
     def setup(self):
         # Vehicle Spawn
         ego_blueprint = self.sim_world.blueprint_library.find('vehicle.mini.cooperst')
-        ego_transform = carla.Transform(carla.Location(x=-88.6, y=151.9, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
+        ego_transform = carla.Transform(carla.Location(x=-88.3, y=21.5, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
+        #ego_transform = carla.Transform(carla.Location(x=-88.6, y=151.9, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
         self.ego_vehicle.spawn(self.sim_world, ego_blueprint, ego_transform)
 
         # Camera Spawns
@@ -191,16 +192,30 @@ class Simulator:
                                 
 
                                 vehicle_diff = self.ldetector.calculate_vehicle_diff()
-                                tpm, pc, sdlp, strongest_label, PERCLOS, point = self.syi.update(frame, vehicle_diff)
+                                tpm, sdlp, strongest_label, PERCLOS, point = self.syi.update(frame, vehicle_diff)
                                 dec = self.syi.decision()
 
+                                if dec == 1:
+                                    dec_txt_color = (37, 245, 47)
+                                    dec_txt = "GUVENLI"
+                                elif dec == 2:
+                                    dec_txt_color = (252, 245, 38)
+                                    dec_txt = "DUSUK RISK"
+                                elif dec == 3:
+                                    dec_txt_color = (255, 158, 40)
+                                    dec_txt = "ORTA RISK"
+                                elif dec == 4:
+                                    dec_txt_color = (255, 0, 0)
+                                    dec_txt = "YUKSEK RISK"
+                                    kb_control.flag = True
+
                                 txt_color = (255, 255, 255)
-                                text_tpm  = self.font.render( "TPM   : %.2f" % tpm,  True,  txt_color)
-                                text_pc   = self.font.render( "PC    : %.2f" % PERCLOS,   True,   txt_color)
-                                text_sdlp = self.font.render( "SDLP  : %.2f" % sdlp, True, txt_color)
-                                text_dec  = self.font.render( "DEC   : %.2f" % dec, True, txt_color)
-                                text_label = self.font.render("Label : %s" % strongest_label, True, txt_color)
-                                text_point = self.font.render("POI   : %.2f" % point, True, txt_color)
+                                text_tpm  = self.font.render( "TPM     : %.2f" % tpm,  True,  txt_color)
+                                text_pc   = self.font.render( "PC      : %.2f" % PERCLOS,   True,   txt_color)
+                                text_sdlp = self.font.render( "SDLP    : %.2f" % sdlp, True, txt_color)
+                                text_dec  = self.font.render( "DURUM   : %s" % dec_txt, True, dec_txt_color)
+                                text_label = self.font.render("ETIKET  : %s" % strongest_label, True, txt_color)
+                                text_point = self.font.render("PUAN    : %.2f" % point, True, txt_color)
 
                                 if kb_control.flag:
                                     text_status = self.font.render("OTOMATIK KONTROL MODU", True, (255, 0 , 0))
