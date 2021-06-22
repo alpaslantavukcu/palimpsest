@@ -212,7 +212,8 @@ class DistPlusPerclos():
         return self.strongest_label, confidance
 
     def puan(self):
-        self.point = (self.phone * 6 + self.text * 4 + self.drink * 3 + self.dist * 3.75 + self.norm * (-0.5)) / self.frames
+        #self.point = (self.phone * 6 + self.text * 4 + self.drink * 3 + self.dist * 3.75 + self.norm * (-0.5)) / self.frames
+        self.point = (self.phone * 6 + self.text * 4 + self.drink * 3  + self.norm * (-0.5)) / self.frames
         return self.point
 
     def mainloop(self,img):
@@ -225,6 +226,7 @@ class DistPlusPerclos():
 
         elif self.strongest_label == 'Distracted':
             self.dist += 1
+            self.strongest_label = 'Normal'
 
         elif self.strongest_label == 'Text':
             self.text += 1

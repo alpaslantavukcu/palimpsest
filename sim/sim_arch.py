@@ -113,8 +113,8 @@ class Simulator:
     def setup(self):
         # Vehicle Spawn
         ego_blueprint = self.sim_world.blueprint_library.find('vehicle.mini.cooperst')
-        ego_transform = carla.Transform(carla.Location(x=-88.3, y=21.5, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
-        #ego_transform = carla.Transform(carla.Location(x=-88.6, y=151.9, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
+        #ego_transform = carla.Transform(carla.Location(x=-88.3, y=21.5, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
+        ego_transform = carla.Transform(carla.Location(x=-88.6, y=151.9, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
         self.ego_vehicle.spawn(self.sim_world, ego_blueprint, ego_transform)
 
         # Camera Spawns
