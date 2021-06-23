@@ -3,7 +3,7 @@ import numpy as np
 from .dpc.exp.dist_pc import DistPlusPerclos
 
 class SyiHelper:
-    def __init__(self, tpm = 11, PERCLOS = 0.25, sdlp = 0.2) -> None:
+    def __init__(self, tpm = 11, PERCLOS = 0.0, sdlp = 0.0) -> None:
         self.tpm = tpm
         self.sdlp = sdlp
         self.PERCLOS = PERCLOS
