@@ -50,6 +50,9 @@ class EgoVehicle:
 
 class SimWorld:
     def __init__(self, client, spawn_actors = False):
+        print(client.get_available_maps())
+        client.load_world('/Game/Carla/Maps/Town04')
+        
         self.world = client.get_world()
         self.blueprint_library = self.world.get_blueprint_library()
         self.snapshot = self.world.get_snapshot()
@@ -126,7 +129,8 @@ class Simulator:
     def setup(self):
         # Vehicle Spawn
         ego_blueprint = self.sim_world.blueprint_library.find('vehicle.mini.cooperst')
-        ego_transform = carla.Transform(carla.Location(x=-88.3, y=21.5, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
+        ego_transform = self.sim_world.world.get_map().get_spawn_points()[5]
+        #ego_transform = carla.Transform(carla.Location(x=-88.3, y=21.5, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
         #ego_transform = carla.Transform(carla.Location(x=-88.6, y=151.9, z=0.35), carla.Rotation(pitch=0.35, yaw=89.8, roll=-0.0))
         self.ego_vehicle.spawn(self.sim_world, ego_blueprint, ego_transform)
 
@@ -336,8 +340,8 @@ class Simulator:
                                     traj = self.ldetector.get_trajectory_from_lane_detector()
                                     throttle, steer = self.controller.get_control(traj, speed, desired_speed=10, dt=0.1)
                                     self.ego_vehicle.controller.steer = steer
-                                    self.ego_vehicle.controller.throttle = 0.4
-                                    #self.ego_vehicle.controller.throttle = np.clip(throttle, 0, 0.7)
+                                    #self.ego_vehicle.controller.throttle = 0.4
+                                    self.ego_vehicle.controller.throttle = np.clip(throttle, 0, 0.4)
                                 else:
                                     js_control.get_control(self.ego_vehicle.controller)
 

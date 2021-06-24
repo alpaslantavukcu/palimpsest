@@ -7,7 +7,7 @@ class SyiHelper:
         self.tpm = tpm
         self.sdlp = sdlp
         self.PERCLOS = PERCLOS
-        self.diff_list = []
+        self.diff_list = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         self.dpc = DistPlusPerclos()
         self.strongest_label, self.point = "Normal", 0
     
