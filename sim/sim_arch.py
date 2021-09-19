@@ -51,7 +51,7 @@ class EgoVehicle:
 class SimWorld:
     def __init__(self, client, spawn_actors = False):
         print(client.get_available_maps())
-        #client.load_world('/Game/Carla/Maps/Town04')
+        client.load_world('/Game/Carla/Maps/Town04')
         
         self.world = client.get_world()
         self.blueprint_library = self.world.get_blueprint_library()

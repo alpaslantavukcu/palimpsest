@@ -7,7 +7,7 @@ import segmentation_models_pytorch as smp
 
 
 class LaneDetector():
-    def __init__(self, cam_geom=CameraGeometry(), model_path=r'D:\Belgeler D\BÇ\palimpsest\palimpsest\sim\best_model_multi_dice_loss.pth', 
+    def __init__(self, cam_geom=CameraGeometry(), model_path=r'D:\palimpsest\palimpsest\sim\lane_detection\best_model_multi_dice_loss.pth', 
     encoder = 'efficientnet-b0', encoder_weights = 'imagenet'):
         self.cg = cam_geom
         self.cut_v, self.grid = self.cg.precompute_grid()
