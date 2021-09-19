@@ -51,7 +51,7 @@ class EgoVehicle:
 class SimWorld:
     def __init__(self, client, spawn_actors = False):
         print(client.get_available_maps())
-        client.load_world('/Game/Carla/Maps/Town04')
+        #client.load_world('/Game/Carla/Maps/Town04')
         
         self.world = client.get_world()
         self.blueprint_library = self.world.get_blueprint_library()
@@ -335,7 +335,7 @@ class Simulator:
                                 traj = self.ldetector.get_trajectory_from_lane_detector()
                                 
 
-                                
+                                #kb_control.flag = True
                                 if kb_control.flag:
                                     traj = self.ldetector.get_trajectory_from_lane_detector()
                                     throttle, steer = self.controller.get_control(traj, speed, desired_speed=10, dt=0.1)
